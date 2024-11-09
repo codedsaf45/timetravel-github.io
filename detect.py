@@ -1,13 +1,9 @@
 import cv2
 from ultralytics import YOLO
-from ultralytics import YOLO
-
-
-
 
 # YOLOv8 모델 로드 (pretrained 모델 또는 사용자 정의 모델 경로)
 model = YOLO("best.pt")  # 기본적으로 YOLOv8n 사용, 필요에 따라 변경 가능
-model.export(format='engine', half=True)
+
 # 웹캠 열기
 cap = cv2.VideoCapture(0)  # 0은 기본 웹캠을 의미, 다른 카메라는 인덱스를 변경
 
@@ -17,6 +13,9 @@ while True:
     if not ret:
         print("웹캠에서 비디오를 가져올 수 없습니다.")
         break
+
+    # 프레임 해상도 조정 (예: 640x480)
+    frame = cv2.resize(frame, (640, 480))
 
     # YOLOv8로 감지 수행
     results = model(frame)
