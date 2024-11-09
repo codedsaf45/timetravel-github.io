@@ -1,9 +1,13 @@
 import cv2
 from ultralytics import YOLO
+from ultralytics import YOLO
+
+
+
 
 # YOLOv8 모델 로드 (pretrained 모델 또는 사용자 정의 모델 경로)
 model = YOLO("best.pt")  # 기본적으로 YOLOv8n 사용, 필요에 따라 변경 가능
-
+model.export(format='engine', half=True)
 # 웹캠 열기
 cap = cv2.VideoCapture(0)  # 0은 기본 웹캠을 의미, 다른 카메라는 인덱스를 변경
 
