@@ -44,14 +44,6 @@ class YoloDetect(threading.Thread):
                         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                         x_center = (x1 + x2) // 2
                         y_center = (y1 + y2) // 2
-                        label = f"x_center: {x_center}"
-                        cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-
-        # 중심에 빨간색 점 표시
-                        #cv2.circle(frame, (x_center, y_center), 5, (0, 0, 255), -1)
-                        
-                        
-                        
                 
                 # 탐지된 프레임을 detected_frame_queue에 넣기
                 if not self.detected_frame_queue.full():
@@ -106,7 +98,6 @@ def main():
                 detected_frame = detected_frame_queue.get()
                 # 탐지된 프레임 표시
                 cv2.imshow("YOLO Detection", detected_frame)
-                print(x_center, y_center)
 
             # 원본 영상 표시
             cv2.imshow("Color Viewer", color_image)
