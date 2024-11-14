@@ -1,0 +1,132 @@
+import cv2
+import threading
+import queue
+from ultralytics import YOLO
+from pyorbbecsdk import Config, OBSensorType, OBFormat, Pipeline, FrameSet, VideoStreamProfile, OBError
+import sys
+import numpy as np
+sys.path.append("pyorbbecsdk/examples")
+from utils import frame_to_bgr_image
+
+ESC_KEY = 27
+
+# YOLO 모델 로드
+try:
+    model = YOLO("best (4).pt").to("cuda")
+except Exception as e:
+    print("CUDA를 사용할 수 없습니다. CPU로 전환합니다.")
+    model = YOLO("best (4).pt")
+
+# 원본 프레임과 탐지된 프레임을 저장할 큐 생성
+frame_queue = queue.Queue(maxsize=20)
+detected_frame_queue = queue.Queue(maxsize=20)
+depth_frame_queue = queue.Queue(maxsize=20)
+
+class YoloDetect(threading.Thread):
+    def __init__(self, frame_queue, detected_frame_queue, depth_frame_queue):
+        super().__init__()
+        self.frame_queue = frame_queue
+        self.detected_frame_queue = detected_frame_queue
+        self.depth_frame_queue = depth_frame_queue
+        self.running = True
+
+    def run(self):
+        global x_center, y_center
+        while self.running:
+            if not self.frame_queue.empty() and not self.depth_frame_queue.empty():
+                # 큐에서 프레임을 가져옴
+                frame = self.frame_queue.get()
+                depth_frame = self.depth_frame_queue.get()
+                
+                # YOLO로 탐지 수행
+                results = model(frame)
+                
+                # 예시로 탐지 결과 그리기
+                for result in results:
+                    for box in result.boxes:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        x_center = (x1 + x2) // 2
+                        y_center = (y1 + y2) // 2
+                        
+                        # 중앙 객체 거리 계산
+                        height, width = depth_frame.shape[:2]
+                        if 0 <= x_center < width and 0 <= y_center < height:
+                            center_distance = depth_frame[y_center, x_center] * 0.001  # 거리(mm)를 meter로 변환
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                            cv2.putText(frame, f"{center_distance:.2f} m", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                
+                # 탐지된 프레임을 detected_frame_queue에 넣기
+                if not self.detected_frame_queue.full():
+                    self.detected_frame_queue.put(frame)
+
+    def stop(self):
+        self.running = False
+
+
+def main():
+    config = Config()
+    pipeline = Pipeline()
+    try:
+        profile_list = pipeline.get_stream_profile_list(OBSensorType.COLOR_SENSOR)
+        color_profile = profile_list.get_default_video_stream_profile()
+        config.enable_stream(color_profile)
+
+        # 깊이 센서 프로필 추가
+        depth_profile = pipeline.get_stream_profile_list(OBSensorType.DEPTH_SENSOR).get_default_video_stream_profile()
+        config.enable_stream(depth_profile)
+
+    except Exception as e:
+        print(e)
+        return
+
+    # YOLO 탐지 스레드 시작
+    yolo_thread = YoloDetect(frame_queue, detected_frame_queue, depth_frame_queue)
+    yolo_thread.start()
+
+    pipeline.start(config)
+    while True:
+        try:
+            frames: FrameSet = pipeline.wait_for_frames(100)
+            if frames is None:
+                continue
+            color_frame = frames.get_color_frame()
+            depth_frame = frames.get_depth_frame()
+            if color_frame is None or depth_frame is None:
+                continue
+            
+            # 프레임을 BGR 이미지로 변환
+            color_image = frame_to_bgr_image(color_frame)
+            depth_data = np.frombuffer(depth_frame.get_data(), dtype=np.uint16).reshape(depth_frame.get_height(), depth_frame.get_width())
+            
+            # 깊이 프레임을 depth_frame_queue에 추가
+            if not depth_frame_queue.full():
+                depth_frame_queue.put(depth_data)
+            
+            # 프레임을 frame_queue에 추가하여 YOLO 스레드로 전달
+            if not frame_queue.full():
+                frame_queue.put(color_image)
+            
+            # 탐지 결과 프레임이 있는 경우 가져오기
+            if not detected_frame_queue.empty():
+                detected_frame = detected_frame_queue.get()
+                # 탐지된 프레임 표시
+                cv2.imshow("YOLO Detection", detected_frame)
+
+            # 원본 영상 표시
+            cv2.imshow("Color Viewer", color_image)
+            
+            key = cv2.waitKey(1)
+            if key == ord('q') or key == ESC_KEY:
+                break
+        except KeyboardInterrupt:
+            break
+
+    # 스레드 중지 및 종료
+    yolo_thread.stop()
+    yolo_thread.join()
+    pipeline.stop()
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
