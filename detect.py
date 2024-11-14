@@ -2,10 +2,11 @@ import cv2
 from ultralytics import YOLO
 
 # YOLOv8 모델 로드 (pretrained 모델 또는 사용자 정의 모델 경로)
-model = YOLO("best.pt")  # 기본적으로 YOLOv8n 사용, 필요에 따라 변경 가능
+model = YOLO("best (4).pt").to("cuda")  # 기본적으로 YOLOv8n 사용, 필요에 따라 변경 가능
 
 # 웹캠 열기
 cap = cv2.VideoCapture(0)  # 0은 기본 웹캠을 의미, 다른 카메라는 인덱스를 변경
+
 
 # 웹캠에서 프레임을 읽어서 YOLOv8으로 감지
 while True:
@@ -19,6 +20,10 @@ while True:
 
     # YOLOv8로 감지 수행
     results = model(frame)
+    detections = results.pred[0]  # 감지 결과
+    for detection in detections:
+        x1, y1, x2, y2, confidence, class_id = detection  # 바운딩 박스 좌표 및 클래스 ID
+    
 
     # 결과를 원본 프레임에 그리기
     annotated_frame = results[0].plot()
